@@ -261,11 +261,13 @@ export class HighlightLockBinding {
 	 * reasserted every frame too — but only over `path` (bounded), never the
 	 * full node/link list.
 	 *
-	 * It also forces `alpha` back to 1 on those same objects: Obsidian's
-	 * native focus-dim effect (active whenever a node is highlighted) fades
-	 * every node that isn't a direct neighbour of the CURRENT lock down to
-	 * ~0.2 alpha, regardless of tint — which is exactly what made earlier
-	 * trail nodes look faded once the lock moved past their neighbours.
+	 * It also forces `node.fadeAlpha` (confirmed via live inspection — see
+	 * project notes) back to 1: Obsidian keeps a per-node target opacity on
+	 * the node object itself, separate from `circle.alpha`, and its render
+	 * step re-derives `circle.alpha` from `fadeAlpha` every frame. Overriding
+	 * `circle.alpha` alone was getting silently overwritten right back by
+	 * that step, which is why the trail still looked faded after the
+	 * alpha-only fix.
 	 */
 	private applyTrailTints(): void {
 		const trailIds = new Set(this.path.slice(0, -1));
@@ -273,6 +275,7 @@ export class HighlightLockBinding {
 			const node = this.adapter.getNode(id);
 			if (node?.circle) {
 				this.tint(node.circle, TRAIL_TINT);
+				if (typeof node.fadeAlpha === "number") node.fadeAlpha = 1;
 				this.forceOpaque(node.circle);
 				this.forceOpaque(node.text);
 				this.tintedNodeIds.add(id);

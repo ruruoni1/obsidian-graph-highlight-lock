@@ -35,6 +35,13 @@ export interface GraphNode {
 	circle?: PixiObject;
 	/** PIXI.Text (the node's label) — kept fully opaque on trail nodes. */
 	text?: PixiObject;
+	/**
+	 * Obsidian's own per-node target opacity (0-1), separate from
+	 * `circle.alpha`. Its per-frame render step re-derives `circle.alpha`
+	 * from this value, so overriding `circle.alpha` alone gets overwritten
+	 * right back — this is the field that actually needs forcing to 1.
+	 */
+	fadeAlpha?: number;
 }
 
 /** An edge between two nodes. Comes from `renderer.links`. */
