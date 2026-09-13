@@ -1,13 +1,14 @@
 # 🔒 Graph Highlight Lock
 
-**Obsidian 기본 Graph View에서, 마우스를 올렸을 때 생기는 하이라이트(강조) 상태를 클릭 한 번으로 고정하는 초경량 플러그인입니다.**
-별도의 그래프 화면을 만들지 않습니다 — 여러분이 이미 쓰고 있는 Graph View 위에서 그대로 동작합니다.
+**Obsidian 기본 Graph View에서, 마우스를 올렸을 때 생기는 하이라이트(강조) 상태를 클릭 한 번으로 고정하는 초경량 플러그인입니다.**\
+별도의 그래프 화면을 만들지 않습니다.\
+여러분이 이미 쓰고 있는 Graph View 위에서 그대로 동작합니다.
 
 ---
 
 ## 왜 필요한가요?
 
-Obsidian Graph View는 노드에 마우스를 올리면 연결된 노드/링크가 강조되지만, 마우스를 떼는 순간 사라집니다.
+Obsidian Graph View는 노드에 마우스를 올리면 연결된 노드/링크가 강조되지만, 마우스를 떼는 순간 사라집니다.\
 노드가 많은 Vault에서 "이 노트가 뭐랑 연결돼 있었지?"를 확인하려고 마우스를 계속 그 자리에 고정해야 했던 경험, 다들 있으실 겁니다.
 
 **Graph Highlight Lock**은 그 강조 상태를 원하는 노드에 고정(Lock)해서, 마우스를 자유롭게 움직이며 연결 관계를 탐색할 수 있게 해줍니다.
@@ -40,7 +41,8 @@ Global Graph와 Local Graph 둘 다 지원합니다.
 
 ## 설치 방법
 
-아직 커뮤니티 플러그인 목록에 등록되지 않았습니다. 아래 방법으로 수동 설치해주세요.
+아직 커뮤니티 플러그인 목록에 등록되지 않았습니다.\
+아래 방법으로 수동 설치해주세요.
 
 1. [Releases](../../releases) 에서 `main.js`, `manifest.json`, `styles.css` 3개 파일을 내려받습니다.
 2. Vault 폴더 안의 `.obsidian/plugins/graph-highlight-lock/` 폴더를 만들고 그 안에 3개 파일을 넣습니다.
@@ -50,9 +52,12 @@ Global Graph와 Local Graph 둘 다 지원합니다.
 
 ## 어떻게 동작하나요? (기술적으로)
 
-Obsidian Graph View는 공식 공개 API가 없습니다. 이 플러그인은 Graph View가 내부적으로 사용하는 PIXI 기반 렌더러의 **하이라이트 상태(`getHighlightNode`, `onNodeClick` 등)를 그대로 재사용**해서 Lock을 구현합니다. 별도의 그래프 렌더링 코드를 작성하지 않았기 때문에 가볍고, 기존 Graph View의 시각적 스타일과 100% 동일하게 보입니다.
+Obsidian Graph View는 공식 공개 API가 없습니다.\
+이 플러그인은 Graph View가 내부적으로 사용하는 PIXI 기반 렌더러의 **하이라이트 상태(`getHighlightNode`, `onNodeClick` 등)를 그대로 재사용**해서 Lock을 구현합니다.\
+별도의 그래프 렌더링 코드를 작성하지 않았기 때문에 가볍고, 기존 Graph View의 시각적 스타일과 100% 동일하게 보입니다.
 
-다만 이는 **비공식(undocumented) 내부 API**이므로, Obsidian이 내부 구조를 변경하면 동작하지 않을 수 있습니다. 이런 내부 접근은 [`src/graph-adapter.ts`](src/graph-adapter.ts) 한 파일에만 격리되어 있어, 향후 대응이 필요할 때 그 파일만 수정하면 되도록 설계했습니다.
+다만 이는 **비공식(undocumented) 내부 API**이므로, Obsidian이 내부 구조를 변경하면 동작하지 않을 수 있습니다.\
+이런 내부 접근은 [`src/graph-adapter.ts`](src/graph-adapter.ts) 한 파일에만 격리되어 있어, 향후 대응이 필요할 때 그 파일만 수정하면 되도록 설계했습니다.
 
 ## 개발자용 빌드 방법
 
