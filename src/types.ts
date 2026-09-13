@@ -11,6 +11,8 @@ export interface PixiObject {
 	off(event: string, fn: (...args: unknown[]) => void): void;
 	/** Color multiplier PIXI applies on top of the object's own draw color. */
 	tint?: number;
+	/** Opacity (0-1). Obsidian's native focus-dim effect rewrites this every frame. */
+	alpha?: number;
 }
 
 /**
@@ -31,6 +33,8 @@ export interface GraphNode {
 	id: string;
 	/** PIXI.Graphics (the node's circle) — used to tint trail nodes. */
 	circle?: PixiObject;
+	/** PIXI.Text (the node's label) — kept fully opaque on trail nodes. */
+	text?: PixiObject;
 }
 
 /** An edge between two nodes. Comes from `renderer.links`. */

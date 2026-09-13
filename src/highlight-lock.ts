@@ -255,6 +255,12 @@ export class HighlightLockBinding {
 	 * Obsidian's own render loop rewrites `tint` every frame, so this must be
 	 * reasserted every frame too — but only over `path` (bounded), never the
 	 * full node/link list.
+	 *
+	 * It also forces `alpha` back to 1 on those same objects: Obsidian's
+	 * native focus-dim effect (active whenever a node is highlighted) fades
+	 * every node that isn't a direct neighbour of the CURRENT lock down to
+	 * ~0.2 alpha, regardless of tint — which is exactly what made earlier
+	 * trail nodes look faded once the lock moved past their neighbours.
 	 */
 	private applyTrailTints(): void {
 		const trailIds = new Set(this.path.slice(0, -1));
@@ -262,6 +268,8 @@ export class HighlightLockBinding {
 			const node = this.adapter.getNode(id);
 			if (node?.circle) {
 				this.tint(node.circle, TRAIL_TINT);
+				this.forceOpaque(node.circle);
+				this.forceOpaque(node.text);
 				this.tintedNodeIds.add(id);
 			}
 		}
@@ -275,8 +283,14 @@ export class HighlightLockBinding {
 			const s = this.endpointId(link.source);
 			const t = this.endpointId(link.target);
 			if ((s === a && t === b) || (s === b && t === a)) {
-				if (link.line) this.tint(link.line, TRAIL_TINT);
-				if (link.arrow) this.tint(link.arrow, TRAIL_TINT);
+				if (link.line) {
+					this.tint(link.line, TRAIL_TINT);
+					this.forceOpaque(link.line);
+				}
+				if (link.arrow) {
+					this.tint(link.arrow, TRAIL_TINT);
+					this.forceOpaque(link.arrow);
+				}
 			}
 		}
 	}
@@ -285,6 +299,16 @@ export class HighlightLockBinding {
 		if (typeof obj.tint !== "number") return;
 		if (!this.originalTint.has(obj)) this.originalTint.set(obj, obj.tint);
 		obj.tint = color;
+	}
+
+	/**
+	 * Overrides Obsidian's per-frame dim so a trail object stays fully
+	 * visible. Nothing needs restoring on unlock: once this stops being
+	 * called for an object, the native render loop takes back over on the
+	 * very next frame.
+	 */
+	private forceOpaque(obj?: { alpha?: number }): void {
+		if (obj && typeof obj.alpha === "number") obj.alpha = 1;
 	}
 
 	/** Restores every tint this instance has overridden (called on clear/detach). */
