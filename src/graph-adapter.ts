@@ -108,21 +108,55 @@ export class GraphAdapter {
 	}
 
 	/**
-	 * Immediately draws the PIXI stage with whatever property values are
-	 * currently set, instead of just flagging "needs a repaint" and waiting
-	 * for Obsidian's own loop to get around to it. Obsidian's own render loop
-	 * only fires on its own triggers (a click, a hover, an active force-layout
-	 * tick) — outside of those, mutating an object's `alpha`/`tint` in JS does
-	 * nothing to the WebGL canvas until *someone* calls `render()`. Needed so
-	 * a trail's tint/opacity override is visible in the very frame it's set,
-	 * not just whenever Obsidian next happens to redraw for its own reasons.
+	 * Makes `nodeId` look, to Obsidian's own node-connectivity check, as
+	 * though it links to `currentId` — which is exactly the condition its
+	 * per-node `render()` uses to decide "keep this node at full opacity".
+	 * This steers the INPUT to that native decision instead of overwriting
+	 * its OUTPUT every frame (which loses the race against that same
+	 * `render()` call). No-ops — and returns `false` — if the node is
+	 * already genuinely connected, so we never touch real adjacency data.
 	 */
-	forceRender(): void {
-		try {
-			const px = this.renderer.px;
-			if (px?.renderer && px?.stage) px.renderer.render(px.stage);
-		} catch {
-			/* renderer not ready this frame — retried next frame by the caller */
-		}
+	markConnectedToCurrent(nodeId: string, currentId: string): boolean {
+		const node = this.getNode(nodeId);
+		if (!node?.reverse || !node.forward) return false;
+		const alreadyConnected =
+			Object.prototype.hasOwnProperty.call(node.forward, currentId) ||
+			Object.prototype.hasOwnProperty.call(node.reverse, currentId);
+		if (alreadyConnected) return false;
+		node.reverse[currentId] = true;
+		return true;
 	}
+
+	/** Removes a fake connection previously added by `markConnectedToCurrent`. */
+	unmarkConnectedToCurrent(nodeId: string, currentId: string): void {
+		const node = this.getNode(nodeId);
+		if (node?.reverse) delete node.reverse[currentId];
+	}
+
+	/**
+	 * Overrides `nodeId`'s own display color. `render()` always lerps
+	 * `circle.tint` toward whatever `getFillColor()` returns, so replacing
+	 * that per-instance method (never the shared class prototype) makes the
+	 * native code itself converge — and stay — on our color, instead of us
+	 * fighting its per-frame lerp back to the node's natural color.
+	 */
+	overrideFillColor(nodeId: string, rgb: number): void {
+		const node = this.getNode(nodeId);
+		if (!node || typeof node.getFillColor !== "function") return;
+		if (!this.originalGetFillColor.has(nodeId)) {
+			this.originalGetFillColor.set(nodeId, node.getFillColor.bind(node));
+		}
+		const original = this.originalGetFillColor.get(nodeId)!;
+		node.getFillColor = () => ({ ...original(), rgb });
+	}
+
+	/** Restores `nodeId`'s original `getFillColor`, previously saved by `overrideFillColor`. */
+	restoreFillColor(nodeId: string): void {
+		const node = this.getNode(nodeId);
+		const original = this.originalGetFillColor.get(nodeId);
+		if (node && original) node.getFillColor = original;
+		this.originalGetFillColor.delete(nodeId);
+	}
+
+	private originalGetFillColor = new Map<string, () => { rgb: number; a: number }>();
 }

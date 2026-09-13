@@ -11,8 +11,6 @@ export interface PixiObject {
 	off(event: string, fn: (...args: unknown[]) => void): void;
 	/** Color multiplier PIXI applies on top of the object's own draw color. */
 	tint?: number;
-	/** Opacity (0-1). Obsidian's native focus-dim effect rewrites this every frame. */
-	alpha?: number;
 }
 
 /**
@@ -31,17 +29,31 @@ export interface GraphPointerEvent {
 /** A node in the graph (file or tag). Comes from `renderer.nodes`. */
 export interface GraphNode {
 	id: string;
-	/** PIXI.Graphics (the node's circle) — used to tint trail nodes. */
+	/** PIXI.Graphics (the node's circle). */
 	circle?: PixiObject;
-	/** PIXI.Text (the node's label) — kept fully opaque on trail nodes. */
+	/** PIXI.Text (the node's label). */
 	text?: PixiObject;
 	/**
-	 * Obsidian's own per-node target opacity (0-1), separate from
-	 * `circle.alpha`. Its per-frame render step re-derives `circle.alpha`
-	 * from this value, so overriding `circle.alpha` alone gets overwritten
-	 * right back — this is the field that actually needs forcing to 1.
+	 * Obsidian's own per-node target opacity (0-1). Its per-frame `render()`
+	 * lerps this toward 1 if the node is the current highlight (or genuinely
+	 * `forward`/`reverse`-adjacent to it) and toward a dim value otherwise,
+	 * then derives `circle.alpha` from it. Fighting this value directly every
+	 * frame loses the race against that same `render()` call — see
+	 * `forward`/`reverse` below for the actual fix.
 	 */
 	fadeAlpha?: number;
+	/** Adjacency: `forward[neighborId]` is present iff this node links TO neighborId. */
+	forward?: Record<string, unknown>;
+	/** Adjacency: `reverse[neighborId]` is present iff neighborId links TO this node. */
+	reverse?: Record<string, unknown>;
+	/**
+	 * Returns this node's own display color `{ rgb, a }`. `render()` always
+	 * lerps `circle.tint` toward `rgb` and factors `a` into both fill and
+	 * text alpha — overriding this method (per node instance, not the shared
+	 * prototype) is the reliable way to recolor a node, instead of fighting
+	 * `circle.tint` every frame.
+	 */
+	getFillColor?: () => { rgb: number; a: number };
 }
 
 /** An edge between two nodes. Comes from `renderer.links`. */
@@ -68,7 +80,6 @@ export interface GraphRenderer {
 	/** PIXI application root (stage + WebGL renderer). */
 	px?: {
 		stage: PixiObject;
-		renderer?: { render(stage: unknown): void };
 	};
 }
 

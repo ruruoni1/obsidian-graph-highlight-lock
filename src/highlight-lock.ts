@@ -1,7 +1,7 @@
 import { Keymap } from "obsidian";
 import { GraphAdapter } from "./graph-adapter";
 import type { GraphHighlightLockSettings } from "./settings";
-import type { GraphLink, GraphNode, GraphPointerEvent, GraphView } from "./types";
+import type { GraphNode, GraphPointerEvent, GraphView } from "./types";
 
 /**
  * Color applied to previously-locked nodes/edges still on the trail (blue,
@@ -20,7 +20,7 @@ const TRAIL_TINT = 0x5c8ff5;
  * Alt+Clicked through, oldest first. The LAST entry is the "current" lock —
  * it gets Obsidian's native highlight (via `getHighlightNode` override).
  * Every earlier entry, and the edges directly connecting consecutive path
- * entries, are tinted blue so the whole navigation trail stays visible even
+ * entries, are recolored so the whole navigation trail stays visible even
  * though only the last node is the native "hover" target.
  *
  * - Alt+Click a node linked to the current lock -> path extends
@@ -28,9 +28,16 @@ const TRAIL_TINT = 0x5c8ff5;
  * - Alt+Click an unrelated node -> path resets to just that node
  * - Esc / empty-space Alt+Click / clearLock() -> path empties entirely
  *
- * The trail-tint reassertion loop only iterates the (small, bounded) `path`
- * array every frame — never the full node/link list — so its cost does not
- * grow with vault size, unlike a naive "re-scan everything" approach.
+ * Trail nodes are kept visible WITHOUT any per-frame loop: Obsidian's own
+ * `node.render()` decides each node's opacity by lerping toward 1 when it is
+ * genuinely `forward`/`reverse`-adjacent to the current highlight, and toward
+ * a dim value otherwise — fighting that decision's OUTPUT every frame (an
+ * earlier approach) always loses the race against that same `render()` call.
+ * Instead this marks trail nodes as adjacent to the current lock (steering
+ * the INPUT `GraphAdapter.markConnectedToCurrent`) and overrides each trail
+ * node's own color function (`GraphAdapter.overrideFillColor`) so native code
+ * converges on — and stays at — our values on its own. Both only need to be
+ * applied once per path change, not every frame.
  */
 export class HighlightLockBinding {
 	private adapter: GraphAdapter;
@@ -42,14 +49,14 @@ export class HighlightLockBinding {
 	private windowKeyDownHandler = (e: KeyboardEvent) => this.handleKeyDown(e);
 	private attached = false;
 
-	// Original tint of every PIXI object we've overridden, so it can be
-	// restored exactly (native tint can vary: color groups, node type, etc.).
-	private originalTint = new WeakMap<object, number>();
-	// Node ids whose circle currently carries our tint override — tracked
-	// separately from `path` because `path` may already be cleared/changed by
-	// the time we need to know what to restore.
-	private tintedNodeIds = new Set<string>();
-	private rafId: number | null = null;
+	// nodeId -> the currentId we faked a connection to, so it can be removed
+	// precisely (and only if it was actually ours) when the path changes again.
+	private fakeConnections = new Map<string, string>();
+	// ids currently wearing our fill-color override, so we know what to restore.
+	private recoloredNodeIds = new Set<string>();
+	// Original tint of link line/arrow objects we've touched, for restore.
+	private originalLinkTint = new WeakMap<object, number>();
+	private tintedLinkObjects = new Set<object>();
 
 	constructor(
 		view: GraphView,
@@ -82,8 +89,7 @@ export class HighlightLockBinding {
 		if (!this.attached) return;
 		this.attached = false;
 
-		this.stopTrailLoop();
-		this.restoreAllTints();
+		this.clearTrailVisuals();
 
 		const stage = this.adapter.getStage() as
 			| { off: (event: string, fn: (e: unknown) => void) => void }
@@ -155,7 +161,7 @@ export class HighlightLockBinding {
 
 	private setPath(nextPath: string[]): void {
 		this.path = nextPath;
-		this.syncTrailLoop();
+		this.syncTrailVisuals();
 		this.onLockChanged(this.getLockPath());
 	}
 
@@ -220,136 +226,106 @@ export class HighlightLockBinding {
 		return false;
 	}
 
-	// === Trail visuals (bounded to `path`, never the full graph) ===
-
-	/** Starts/stops the tint-reassertion loop based on whether a trail exists. */
-	private syncTrailLoop(): void {
-		const hasTrail = this.path.length >= 2;
-		if (hasTrail && this.rafId === null) {
-			this.startTrailLoop();
-		} else if (!hasTrail) {
-			this.stopTrailLoop();
-			this.restoreAllTints();
-		}
-	}
-
-	private startTrailLoop(): void {
-		const loop = () => {
-			if (this.rafId === null) return; // stopped between schedule and run
-			this.applyTrailTints();
-			// Obsidian only redraws the canvas on its own triggers (click,
-			// hover, an active force-layout tick). Setting alpha/tint alone
-			// does not repaint WebGL, so force an immediate draw with our
-			// values every frame the trail loop is running.
-			this.adapter.forceRender();
-			this.rafId = requestAnimationFrame(loop);
-		};
-		this.rafId = requestAnimationFrame(loop);
-	}
-
-	private stopTrailLoop(): void {
-		if (this.rafId !== null) {
-			cancelAnimationFrame(this.rafId);
-			this.rafId = null;
-		}
-	}
+	// === Trail visuals — applied once per path change, no per-frame loop ===
 
 	/**
-	 * Re-applies the trail tint to every node/edge on the path except the
-	 * current (last) lock, which keeps Obsidian's native highlight color.
-	 * Obsidian's own render loop rewrites `tint` every frame, so this must be
-	 * reasserted every frame too — but only over `path` (bounded), never the
-	 * full node/link list.
-	 *
-	 * It also forces `node.fadeAlpha` (confirmed via live inspection — see
-	 * project notes) back to 1: Obsidian keeps a per-node target opacity on
-	 * the node object itself, separate from `circle.alpha`, and its render
-	 * step re-derives `circle.alpha` from `fadeAlpha` every frame. Overriding
-	 * `circle.alpha` alone was getting silently overwritten right back by
-	 * that step, which is why the trail still looked faded after the
-	 * alpha-only fix.
+	 * Reconciles the fake-adjacency marks and color overrides with the
+	 * current `path`. Only ever touches ids that were, are, or are about to
+	 * be on the trail — bounded by path length, never the full graph.
 	 */
-	private applyTrailTints(): void {
-		const trailIds = new Set(this.path.slice(0, -1));
-		for (const id of trailIds) {
-			const node = this.adapter.getNode(id);
-			if (node?.circle) {
-				this.tint(node.circle, TRAIL_TINT);
-				if (typeof node.fadeAlpha === "number") node.fadeAlpha = 1;
-				this.forceOpaque(node.circle);
-				this.forceOpaque(node.text);
-				this.tintedNodeIds.add(id);
+	private syncTrailVisuals(): void {
+		const currentId = this.getLockedNodeId();
+		const desiredTrailIds = new Set(this.path.slice(0, -1));
+
+		// Drop fake connections that no longer apply (node left the trail, or
+		// the current lock moved on to a different node).
+		for (const [nodeId, targetId] of [...this.fakeConnections]) {
+			if (!desiredTrailIds.has(nodeId) || targetId !== currentId) {
+				this.adapter.unmarkConnectedToCurrent(nodeId, targetId);
+				this.fakeConnections.delete(nodeId);
 			}
 		}
+
+		// Drop color overrides for ids no longer on the trail.
+		for (const nodeId of [...this.recoloredNodeIds]) {
+			if (!desiredTrailIds.has(nodeId)) {
+				this.adapter.restoreFillColor(nodeId);
+				this.recoloredNodeIds.delete(nodeId);
+			}
+		}
+
+		// Add what's missing for the current trail.
+		if (currentId) {
+			for (const nodeId of desiredTrailIds) {
+				if (!this.fakeConnections.has(nodeId)) {
+					if (this.adapter.markConnectedToCurrent(nodeId, currentId)) {
+						this.fakeConnections.set(nodeId, currentId);
+					}
+				}
+				if (!this.recoloredNodeIds.has(nodeId)) {
+					this.adapter.overrideFillColor(nodeId, TRAIL_TINT);
+					this.recoloredNodeIds.add(nodeId);
+				}
+			}
+		}
+
+		this.syncTrailLinkTints();
+	}
+
+	/** Tints the edges directly connecting consecutive trail nodes; restores every other previously-tinted edge. */
+	private syncTrailLinkTints(): void {
+		const desired = new Set<object>();
 		for (let i = 0; i < this.path.length - 1; i++) {
-			this.tintLinkBetween(this.path[i], this.path[i + 1]);
+			for (const obj of this.findLinkObjectsBetween(this.path[i], this.path[i + 1])) {
+				this.tintLink(obj);
+				desired.add(obj);
+			}
+		}
+		for (const obj of [...this.tintedLinkObjects]) {
+			if (!desired.has(obj)) this.restoreLinkTint(obj);
 		}
 	}
 
-	private tintLinkBetween(a: string, b: string): void {
+	private findLinkObjectsBetween(a: string, b: string): { tint?: number }[] {
+		const objs: { tint?: number }[] = [];
 		for (const link of this.adapter.getLinks()) {
 			const s = this.endpointId(link.source);
 			const t = this.endpointId(link.target);
 			if ((s === a && t === b) || (s === b && t === a)) {
-				if (link.line) {
-					this.tint(link.line, TRAIL_TINT);
-					this.forceOpaque(link.line);
-				}
-				if (link.arrow) {
-					this.tint(link.arrow, TRAIL_TINT);
-					this.forceOpaque(link.arrow);
-				}
+				if (link.line) objs.push(link.line);
+				if (link.arrow) objs.push(link.arrow);
 			}
 		}
+		return objs;
 	}
 
-	private tint(obj: { tint?: number }, color: number): void {
+	private tintLink(obj: { tint?: number }): void {
 		if (typeof obj.tint !== "number") return;
-		if (!this.originalTint.has(obj)) this.originalTint.set(obj, obj.tint);
-		obj.tint = color;
+		if (!this.originalLinkTint.has(obj)) this.originalLinkTint.set(obj, obj.tint);
+		obj.tint = TRAIL_TINT;
+		this.tintedLinkObjects.add(obj);
 	}
 
-	/**
-	 * Overrides Obsidian's per-frame dim so a trail object stays fully
-	 * visible. Nothing needs restoring on unlock: once this stops being
-	 * called for an object, the native render loop takes back over on the
-	 * very next frame.
-	 */
-	private forceOpaque(obj?: { alpha?: number }): void {
-		if (obj && typeof obj.alpha === "number") obj.alpha = 1;
+	private restoreLinkTint(obj: { tint?: number }): void {
+		const original = this.originalLinkTint.get(obj);
+		if (original !== undefined) obj.tint = original;
+		this.tintedLinkObjects.delete(obj);
 	}
 
-	/** Restores every tint this instance has overridden (called on clear/detach). */
-	private restoreAllTints(): void {
-		for (const node of this.iterateKnownNodes()) {
-			if (node.circle) this.restoreTint(node.circle);
+	/** Undoes every trail override this instance holds (called on clear/detach). */
+	private clearTrailVisuals(): void {
+		for (const [nodeId, targetId] of this.fakeConnections) {
+			this.adapter.unmarkConnectedToCurrent(nodeId, targetId);
 		}
-		this.tintedNodeIds.clear();
-		for (const link of this.adapter.getLinks()) {
-			this.restoreLinkTint(link);
-		}
-	}
+		this.fakeConnections.clear();
 
-	private restoreLinkTint(link: GraphLink): void {
-		if (link.line) this.restoreTint(link.line);
-		if (link.arrow) this.restoreTint(link.arrow);
-	}
-
-	private restoreTint(obj: { tint?: number }): void {
-		const original = this.originalTint.get(obj);
-		if (original !== undefined) {
-			obj.tint = original;
-			this.originalTint.delete(obj);
+		for (const nodeId of this.recoloredNodeIds) {
+			this.adapter.restoreFillColor(nodeId);
 		}
-	}
+		this.recoloredNodeIds.clear();
 
-	/** Only the (small) set of nodes we may have tinted — never the full node list. */
-	private iterateKnownNodes(): GraphNode[] {
-		const nodes: GraphNode[] = [];
-		for (const id of this.tintedNodeIds) {
-			const node = this.adapter.getNode(id);
-			if (node) nodes.push(node);
+		for (const obj of this.tintedLinkObjects) {
+			this.restoreLinkTint(obj);
 		}
-		return nodes;
 	}
 }
