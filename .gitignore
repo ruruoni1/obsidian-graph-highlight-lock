@@ -1,0 +1,14 @@
+# build output
+main.js
+*.js.map
+
+# dependencies
+node_modules/
+
+# editor / OS
+.vscode/
+.DS_Store
+
+# obsidian test vault artifacts (if a vault is ever nested here)
+.obsidian/workspace*.json
+.claude/

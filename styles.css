@@ -1,0 +1,18 @@
+.graph-highlight-lock-marker {
+	position: absolute;
+	top: 8px;
+	left: 8px;
+	z-index: 5;
+	padding: 2px 8px;
+	border-radius: 4px;
+	font-size: 12px;
+	line-height: 1.6;
+	background-color: var(--background-secondary);
+	color: var(--text-normal);
+	border: 1px solid var(--background-modifier-border);
+	pointer-events: none;
+	max-width: 85%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
