@@ -237,6 +237,11 @@ export class HighlightLockBinding {
 		const loop = () => {
 			if (this.rafId === null) return; // stopped between schedule and run
 			this.applyTrailTints();
+			// Obsidian only redraws the canvas on its own triggers (click,
+			// hover, an active force-layout tick). Setting alpha/tint alone
+			// does not repaint WebGL, so force an immediate draw with our
+			// values every frame the trail loop is running.
+			this.adapter.forceRender();
 			this.rafId = requestAnimationFrame(loop);
 		};
 		this.rafId = requestAnimationFrame(loop);

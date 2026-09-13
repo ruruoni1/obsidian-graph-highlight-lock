@@ -106,4 +106,23 @@ export class GraphAdapter {
 	requestRepaint(): void {
 		this.renderer.changed();
 	}
+
+	/**
+	 * Immediately draws the PIXI stage with whatever property values are
+	 * currently set, instead of just flagging "needs a repaint" and waiting
+	 * for Obsidian's own loop to get around to it. Obsidian's own render loop
+	 * only fires on its own triggers (a click, a hover, an active force-layout
+	 * tick) — outside of those, mutating an object's `alpha`/`tint` in JS does
+	 * nothing to the WebGL canvas until *someone* calls `render()`. Needed so
+	 * a trail's tint/opacity override is visible in the very frame it's set,
+	 * not just whenever Obsidian next happens to redraw for its own reasons.
+	 */
+	forceRender(): void {
+		try {
+			const px = this.renderer.px;
+			if (px?.renderer && px?.stage) px.renderer.render(px.stage);
+		} catch {
+			/* renderer not ready this frame — retried next frame by the caller */
+		}
+	}
 }

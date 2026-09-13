@@ -61,6 +61,7 @@ export interface GraphRenderer {
 	/** PIXI application root (stage + WebGL renderer). */
 	px?: {
 		stage: PixiObject;
+		renderer?: { render(stage: unknown): void };
 	};
 }
 
