@@ -44,6 +44,9 @@ Global Graph와 Local Graph 둘 다 지원합니다.
 
 - **Lock trigger**: Lock에 사용할 보조키 (기본값 `Alt`, `Ctrl`/`Shift`/`Cmd` 등으로 변경 가능)
 - **Locked node marker**: 화면 좌상단에 현재 Lock된 경로를 `🔒 A → B → C` 형태로 표시할지 여부
+- **Trail color**: 경로(이전에 Lock했던 노드/연결선)에 사용할 색상
+- **Trail edge thickness**: 경로 연결선의 두께 (기본 두께의 배수)
+- **Trail direction arrows**: 연결선에 Lock한 순서를 가리키는 화살표를 표시할지 여부
 
 ## 설치 방법
 
@@ -138,6 +141,9 @@ Works with both the Global Graph and Local Graph views.
 
 - **Lock trigger**: the modifier key used to lock (default `Alt`; `Ctrl`/`Shift`/`Cmd` also supported)
 - **Locked node marker**: shows the current locked trail in the top-left corner as `🔒 A → B → C`
+- **Trail color**: color used for the trail (previously-locked nodes and their connecting edges)
+- **Trail edge thickness**: thickness of trail edges, as a multiple of the native line thickness
+- **Trail direction arrows**: show an arrow on each trail edge pointing in the order you locked the nodes
 
 ## Installation
 

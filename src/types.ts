@@ -13,6 +13,16 @@ export interface PixiObject {
 	tint?: number;
 	/** Opacity (0-1). */
 	alpha?: number;
+	/** Whether PIXI draws this object at all. */
+	visible?: boolean;
+	/** Position in the parent container's local coordinate space (same space as `GraphNode.x/y`). */
+	x?: number;
+	y?: number;
+	/** Rotation in radians. */
+	rotation?: number;
+	/** Sprite height — used by the link line to control its rendered thickness. */
+	height?: number;
+	scale?: { x: number; y: number };
 }
 
 /**
@@ -31,6 +41,9 @@ export interface GraphPointerEvent {
 /** A node in the graph (file or tag). Comes from `renderer.nodes`. */
 export interface GraphNode {
 	id: string;
+	/** Position in the renderer's `hanger` container's local coordinate space. */
+	x?: number;
+	y?: number;
 	/** PIXI.Graphics (the node's circle). */
 	circle?: PixiObject;
 	/** PIXI.Text (the node's label). */

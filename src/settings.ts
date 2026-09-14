@@ -7,11 +7,20 @@ export interface GraphHighlightLockSettings {
 	lockModifier: Modifier;
 	/** Show a visual marker on the locked node. */
 	showLockMarker: boolean;
+	/** Color (hex, e.g. "#5c8ff5") applied to trail nodes and edges. */
+	trailColor: string;
+	/** Multiplier on the trail edges' native line thickness. 1 = native thickness. */
+	trailLineWidth: number;
+	/** Show a direction arrow on each trail edge, pointing in the order the nodes were locked. */
+	showTrailArrows: boolean;
 }
 
 export const DEFAULT_SETTINGS: GraphHighlightLockSettings = {
 	lockModifier: "Alt",
 	showLockMarker: true,
+	trailColor: "#5c8ff5",
+	trailLineWidth: 2,
+	showTrailArrows: true,
 };
 
 const MODIFIER_OPTIONS: Record<Modifier, string> = {
@@ -59,6 +68,44 @@ export class GraphHighlightLockSettingTab extends PluginSettingTab {
 					this.plugin.settings.showLockMarker = value;
 					await this.plugin.saveSettings();
 					this.plugin.refreshMarkers();
+				});
+			});
+
+		new Setting(containerEl)
+			.setName("Trail color")
+			.setDesc(
+				"Color used for the navigation trail (previously-locked nodes and their connecting edges). Applies from the next lock action onward."
+			)
+			.addColorPicker((picker) => {
+				picker.setValue(this.plugin.settings.trailColor);
+				picker.onChange(async (value) => {
+					this.plugin.settings.trailColor = value;
+					await this.plugin.saveSettings();
+				});
+			});
+
+		new Setting(containerEl)
+			.setName("Trail edge thickness")
+			.setDesc("Thickness of trail edges, as a multiple of the native line thickness.")
+			.addSlider((slider) => {
+				slider
+					.setLimits(1, 5, 0.5)
+					.setValue(this.plugin.settings.trailLineWidth)
+					.setDynamicTooltip()
+					.onChange(async (value) => {
+						this.plugin.settings.trailLineWidth = value;
+						await this.plugin.saveSettings();
+					});
+			});
+
+		new Setting(containerEl)
+			.setName("Trail direction arrows")
+			.setDesc("Show an arrow on each trail edge pointing in the order you locked the nodes.")
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.showTrailArrows);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.showTrailArrows = value;
+					await this.plugin.saveSettings();
 				});
 			});
 	}
