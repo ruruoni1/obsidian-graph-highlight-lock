@@ -1,23 +1,36 @@
+<div align="center">
+
 # 🔒 Graph Highlight Lock
 
-**Obsidian 기본 Graph View에서, 마우스를 올렸을 때 생기는 하이라이트(강조) 상태를  
-클릭 한 번으로 고정하는 초경량 플러그인입니다.**
+**Obsidian 그래프에서, 마우스를 떼도 사라지지 않는 하이라이트.**  
+클릭 한 번으로 강조 상태를 고정하고, 지나온 경로를 색깔 있는 선으로 따라가 보세요.
 
-별도의 그래프 화면을 만들지 않습니다.  
-여러분이 이미 쓰고 있는 Graph View 위에서 그대로 동작합니다.
+[![Version](https://img.shields.io/github/manifest-json/v/ruruoni1/obsidian-graph-highlight-lock?color=5c8ff5&label=version)](https://github.com/ruruoni1/obsidian-graph-highlight-lock/releases)
+[![Obsidian minAppVersion](https://img.shields.io/badge/Obsidian-%E2%89%A5%201.8.0-7c3aed)](https://obsidian.md)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![No new dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen)](package.json)
+
+</div>
 
 ---
+
+별도의 그래프 화면을 만들지 않습니다.  
+여러분이 **이미 쓰고 있는** Obsidian Graph View 위에서, 추가 설정 없이 그대로 동작합니다.
 
 ## 왜 필요한가요?
 
 Obsidian Graph View는 노드에 마우스를 올리면 연결된 노드/링크가 강조되지만,  
 마우스를 떼는 순간 사라집니다.
 
-노드가 많은 Vault에서 "이 노트가 뭐랑 연결돼 있었지?"를 확인하려고 마우스를  
-계속 그 자리에 고정해야 했던 경험, 다들 있으실 겁니다.
+노드가 몇백~몇천 개인 Vault에서 "이 노트가 뭐랑 연결돼 있었지?"를 확인하려고  
+마우스를 그 자리에 얼어붙은 듯 고정해야 했던 경험, 다들 있으실 겁니다.  
+연결된 노드를 하나씩 따라가 보고 싶어도, 마우스를 옮기는 순간 지금까지 본 게  
+다 날아가 버립니다.
 
-**Graph Highlight Lock**은 그 강조 상태를 원하는 노드에 고정(Lock)해서,  
-마우스를 자유롭게 움직이며 연결 관계를 탐색할 수 있게 해줍니다.
+**Graph Highlight Lock**은 그 강조 상태를 노드에 고정(Lock)합니다.  
+마우스를 자유롭게 움직이며 연결 관계를 탐색하고, 링크를 따라 다음 노드로  
+넘어가면 — **지나온 경로 전체가 색깔 있는 선으로 계속 남아있습니다.**  
+"내가 어디서부터 어떻게 여기까지 왔는지"를 한눈에 되짚어볼 수 있습니다.
 
 ## 핵심 기능
 
@@ -25,13 +38,14 @@ Obsidian Graph View는 노드에 마우스를 올리면 연결된 노드/링크�
 |---|---|
 | 노드에 마우스 올리기 | 기본 Obsidian 동작 그대로 (연결 노드/링크 강조) |
 | **Alt + 좌클릭** (호버 중인 노드) | 현재 강조 상태를 **고정(Lock)** — 마우스를 옮겨도 유지됨 |
-| 연결된 다른 노드에서 Alt + 클릭 | Lock 대상이 이어짐 — **지나온 경로(Trail)가 파란색으로 계속 표시**되어, 어떤 경로로 찾아왔는지 한눈에 보임 |
+| 연결된 다른 노드에서 Alt + 클릭 | Lock 대상이 이어짐 — **지나온 경로(Trail)가 색깔 있는 선 + 화살표로 계속 표시**되어, 어떤 순서로 찾아왔는지 한눈에 보임 |
 | 경로 중간 노드를 다시 Alt + 클릭 | 그 지점까지 경로를 되돌림 |
 | 연결 없는 노드를 Alt + 클릭 | 새로운 경로로 리셋 |
 | `Esc` | Lock 전체 해제 |
 | 빈 공간에서 Alt + 클릭 | Lock 전체 해제 |
 | 일반 클릭 / 드래그 / 줌 / 우클릭 | **전혀 영향받지 않음** — 기존 Graph View 기능 100% 그대로 |
 
+경로의 **색상 · 굵기 · 화살표 표시 여부**는 설정에서 자유롭게 바꿀 수 있습니다.  
 Global Graph와 Local Graph 둘 다 지원합니다.
 
 ## 커맨드 팔레트
@@ -75,11 +89,13 @@ Lock을 구현합니다.
 이런 내부 접근은 [`src/graph-adapter.ts`](src/graph-adapter.ts) 한 파일에만  
 격리되어 있어, 향후 대응이 필요할 때 그 파일만 수정하면 되도록 설계했습니다.
 
-지나온 경로(Trail)를 파란색으로 유지하는 부분은 노드와 링크가 서로 다른 방식으로  
+지나온 경로(Trail)를 계속 표시하는 부분은 노드와 링크가 서로 다른 방식으로  
 처리됩니다. 노드는 색상 계산 함수(`getFillColor`)를 필요한 동안만 바꿔치기해서,  
-매 프레임 다시 계산되어도 항상 우리 색이 나오게 만듭니다(반복 실행 없음). 링크(선)는  
-이런 함수가 따로 없어서, 경로에 있는 연결선만(전체 그래프가 아니라) 아주 가볍게 매  
-프레임 색을 다시 칠하는 방식을 씁니다.
+Obsidian이 매 프레임 다시 계산해도 항상 우리 색이 나오게 만듭니다. 링크(선)는  
+이런 함수가 따로 없어서, 연결선 자체의 "그리기" 함수를 감싸  
+**"원래 그리기 → 그 직후 우리 값(색상 · 굵기 · 화살표) 적용"** 순서를 항상  
+보장하는 방식을 씁니다. 두 방식 모두 반복 실행되는 타이머 없이, 경로에 있는  
+노드/연결선(전체 그래프가 아니라)만 건드립니다.
 
 ## 개발자용 빌드 방법
 
@@ -92,11 +108,10 @@ npm run build   # 프로덕션 빌드 (main.js 생성)
 빌드된 `main.js`, `manifest.json`, `styles.css`를 테스트 Vault의
 `.obsidian/plugins/graph-highlight-lock/`에 복사하면 됩니다.
 
-## 향후 계획 (v0.2 이후 검토)
+## 향후 계획
 
 - 다중 Lock / 여러 경로 동시 표시
 - 연결 깊이(Depth) 1~3단계 선택
-- Lock 노드 전용 색상 커스터마이징
 - Lock 상태 저장 (세션 간 유지)
 
 ## 라이선스
@@ -107,14 +122,16 @@ MIT
 
 # 🔒 Graph Highlight Lock (English)
 
-**A lightweight Obsidian plugin that lets you pin (lock) the hover-highlight state of a node in the built-in Graph View with a single click.**
-It does not create a separate graph view — it works directly on top of the Graph View you already use.
+**A highlight that doesn't disappear when your mouse moves.**
+Pin the hover-highlight of any node in Obsidian's built-in Graph View with a single click, and watch your navigation trail stay lit up behind you as a colored path.
+
+It does not create a separate graph view — it works directly on top of the Graph View you already use, with zero extra setup.
 
 ## Why?
 
-Obsidian's Graph View highlights a node's connections while your mouse hovers over it, but the highlight disappears the moment you move away. In a vault with many notes, that means keeping your mouse frozen in place just to trace a note's connections.
+Obsidian's Graph View highlights a node's connections while your mouse hovers over it, but the highlight disappears the moment you move away. In a vault with hundreds or thousands of notes, that means freezing your mouse in place just to trace a note's connections — and following a chain of links means losing everything you've already seen the second you move on.
 
-**Graph Highlight Lock** lets you pin that highlight to a node so you can freely move your mouse while exploring the connections.
+**Graph Highlight Lock** pins that highlight to a node. Move your mouse freely, follow a link to the next node, and lock that one too — **the entire path you took stays visible as a colored line**, so you always know how you got where you are.
 
 ## Core Features
 
@@ -122,13 +139,14 @@ Obsidian's Graph View highlights a node's connections while your mouse hovers ov
 |---|---|
 | Hover a node | Default Obsidian behavior (neighbors/edges highlighted) |
 | **Alt + Left Click** on a hovered node | **Locks** the current highlight — stays even after the mouse moves away |
-| Alt + Click a connected neighbor | The lock extends — the **navigation trail is kept visible in blue**, so you can always see the path you took |
+| Alt + Click a connected neighbor | The lock extends — the **navigation trail stays visible as a colored line with a direction arrow**, so you can always see the path you took, in order |
 | Alt + Click a node already on the trail | Walks the trail back to that point |
 | Alt + Click an unrelated node | Starts a fresh trail |
 | `Esc` | Clears the lock entirely |
 | Alt + Click on empty space | Clears the lock entirely |
 | Normal click / drag / zoom / right-click | **Completely unaffected** — all native Graph View behavior is preserved |
 
+The trail's **color, thickness, and direction arrows** are all configurable in settings.
 Works with both the Global Graph and Local Graph views.
 
 ## Commands
@@ -161,7 +179,7 @@ Obsidian's Graph View has no official public API. This plugin reuses the **exist
 
 That said, this relies on **undocumented internal APIs**, so it may break on future Obsidian updates. All such access is isolated in a single file, [`src/graph-adapter.ts`](src/graph-adapter.ts), so only that file needs to change if Obsidian's internals shift.
 
-Keeping the trail blue works differently for nodes and links. Nodes get their own color function (`getFillColor`) replaced for as long as they're on the trail, so every time native code recomputes it, it lands on our color anyway (no loop needed). Links have no equivalent override point, so trail-connecting edges (never the full link list) are re-tinted with a small, bounded per-frame loop instead.
+Keeping the trail visible works differently for nodes and links. Nodes get their own color function (`getFillColor`) replaced for as long as they're on the trail, so every time native code recomputes it, it lands on our color anyway. Links have no equivalent override point, so instead the link's own draw function is wrapped to always run the native draw first and apply our color/thickness/arrow right after — guaranteed to be the last write, every time. Neither approach uses a polling timer; both only ever touch the (small) set of nodes/edges actually on the trail, never the full graph.
 
 ## Building from source
 
@@ -173,11 +191,10 @@ npm run build   # production build (produces main.js)
 
 Copy the built `main.js`, `manifest.json`, and `styles.css` into your test vault's `.obsidian/plugins/graph-highlight-lock/`.
 
-## Roadmap (post-v0.2 candidates)
+## Roadmap
 
 - Multiple simultaneous locks / trails
 - Selectable connection depth (1–3 hops)
-- Custom lock color
 - Persisting lock state across sessions
 
 ## License
