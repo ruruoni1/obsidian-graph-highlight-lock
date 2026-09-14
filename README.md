@@ -72,6 +72,12 @@ Lock을 구현합니다.
 이런 내부 접근은 [`src/graph-adapter.ts`](src/graph-adapter.ts) 한 파일에만  
 격리되어 있어, 향후 대응이 필요할 때 그 파일만 수정하면 되도록 설계했습니다.
 
+지나온 경로(Trail)를 파란색으로 유지하는 부분은 노드와 링크가 서로 다른 방식으로  
+처리됩니다. 노드는 색상 계산 함수(`getFillColor`)를 필요한 동안만 바꿔치기해서,  
+매 프레임 다시 계산되어도 항상 우리 색이 나오게 만듭니다(반복 실행 없음). 링크(선)는  
+이런 함수가 따로 없어서, 경로에 있는 연결선만(전체 그래프가 아니라) 아주 가볍게 매  
+프레임 색을 다시 칠하는 방식을 씁니다.
+
 ## 개발자용 빌드 방법
 
 ```bash
@@ -148,6 +154,8 @@ Alternatively, install it via [BRAT](https://github.com/TfTHacker/obsidian42-bra
 Obsidian's Graph View has no official public API. This plugin reuses the **existing highlight state of the internal PIXI-based renderer** (`getHighlightNode`, `onNodeClick`, etc.) instead of drawing its own graph — which keeps it lightweight and visually identical to the native Graph View.
 
 That said, this relies on **undocumented internal APIs**, so it may break on future Obsidian updates. All such access is isolated in a single file, [`src/graph-adapter.ts`](src/graph-adapter.ts), so only that file needs to change if Obsidian's internals shift.
+
+Keeping the trail blue works differently for nodes and links. Nodes get their own color function (`getFillColor`) replaced for as long as they're on the trail, so every time native code recomputes it, it lands on our color anyway (no loop needed). Links have no equivalent override point, so trail-connecting edges (never the full link list) are re-tinted with a small, bounded per-frame loop instead.
 
 ## Building from source
 
