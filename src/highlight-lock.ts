@@ -263,6 +263,13 @@ export class HighlightLockBinding {
 	private syncTrailVisuals(): void {
 		const currentId = this.getLockedNodeId();
 		const desiredTrailIds = new Set(this.path.slice(0, -1));
+		console.debug("[GHL] syncTrailVisuals", {
+			path: [...this.path],
+			currentId,
+			desiredTrailIds: [...desiredTrailIds],
+			existingFakeConnections: [...this.fakeConnections],
+			existingRecolored: [...this.recoloredNodeIds],
+		});
 
 		// Drop fake connections that no longer apply (node left the trail, or
 		// the current lock moved on to a different node).
