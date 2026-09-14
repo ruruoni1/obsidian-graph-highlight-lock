@@ -58,6 +58,17 @@ export class HighlightLockBinding {
 	private originalLinkTint = new WeakMap<object, number>();
 	private tintedLinkObjects = new Set<object>();
 
+	// A few delayed repaint nudges after each path change, not a loop: the
+	// data (fadeAlpha/tint) keeps animating toward its new target in the
+	// background on Obsidian's own schedule, but the canvas itself is only
+	// actually repainted on specific triggers. A single repaint requested
+	// right when the path changes can catch the animation mid-flight (still
+	// visibly dim) and then never update again until some unrelated
+	// interaction happens to repaint. These nudges make sure a repaint also
+	// lands once the native fade-in has had time to finish.
+	private static readonly REPAINT_NUDGE_DELAYS_MS = [50, 150, 350, 600];
+	private pendingRepaintTimers: number[] = [];
+
 	constructor(
 		view: GraphView,
 		settings: GraphHighlightLockSettings,
@@ -89,6 +100,7 @@ export class HighlightLockBinding {
 		if (!this.attached) return;
 		this.attached = false;
 
+		this.clearRepaintNudges();
 		this.clearTrailVisuals();
 
 		const stage = this.adapter.getStage() as
@@ -163,6 +175,21 @@ export class HighlightLockBinding {
 		this.path = nextPath;
 		this.syncTrailVisuals();
 		this.onLockChanged(this.getLockPath());
+		this.scheduleRepaintNudges();
+	}
+
+	private scheduleRepaintNudges(): void {
+		this.clearRepaintNudges();
+		for (const delay of HighlightLockBinding.REPAINT_NUDGE_DELAYS_MS) {
+			this.pendingRepaintTimers.push(
+				window.setTimeout(() => this.adapter.requestRepaint(), delay)
+			);
+		}
+	}
+
+	private clearRepaintNudges(): void {
+		for (const id of this.pendingRepaintTimers) window.clearTimeout(id);
+		this.pendingRepaintTimers = [];
 	}
 
 	private isLockModifierEvent(e: unknown): boolean {
