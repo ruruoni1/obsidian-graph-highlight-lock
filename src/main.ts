@@ -72,7 +72,8 @@ export default class GraphHighlightLockPlugin extends Plugin {
 	}
 
 	async loadSettings(): Promise<void> {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		const data = (await this.loadData()) as Partial<GraphHighlightLockSettings> | null;
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, data);
 	}
 
 	async saveSettings(): Promise<void> {
@@ -90,7 +91,7 @@ export default class GraphHighlightLockPlugin extends Plugin {
 		checking: boolean,
 		action: (binding: HighlightLockBinding) => void
 	): boolean {
-		const leaf = this.app.workspace.activeLeaf;
+		const leaf = this.app.workspace.getMostRecentLeaf();
 		const viewBinding = leaf ? this.bindings.get(leaf) : undefined;
 		if (!viewBinding) return false;
 		if (!checking) action(viewBinding.binding);

@@ -1,5 +1,5 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
-import type { Modifier } from "obsidian";
+import type { Modifier, SettingDefinitionItem } from "obsidian";
 import type GraphHighlightLockPlugin from "./main";
 
 export interface GraphHighlightLockSettings {
@@ -39,6 +39,75 @@ export class GraphHighlightLockSettingTab extends PluginSettingTab {
 		this.plugin = plugin;
 	}
 
+	// Declarative settings for Obsidian 1.13+ (rendering and settings search).
+	// `display()` below stays as a fallback for older Obsidian versions — it
+	// is only called when this returns an empty array.
+	getSettingDefinitions(): SettingDefinitionItem[] {
+		return [
+			{
+				name: "Lock trigger",
+				desc: "Modifier key + Left Click on a hovered node to lock its highlight. The same modifier + click on empty space unlocks it.",
+				control: {
+					type: "dropdown",
+					key: "lockModifier",
+					defaultValue: DEFAULT_SETTINGS.lockModifier,
+					options: MODIFIER_OPTIONS,
+				},
+			},
+			{
+				name: "Locked node marker",
+				desc: "Show a thin outline ring around the currently locked node.",
+				control: {
+					type: "toggle",
+					key: "showLockMarker",
+					defaultValue: DEFAULT_SETTINGS.showLockMarker,
+				},
+			},
+			{
+				name: "Trail color",
+				desc: "Color used for the navigation trail (previously-locked nodes and their connecting edges). Applies from the next lock action onward.",
+				control: {
+					type: "color",
+					key: "trailColor",
+					defaultValue: DEFAULT_SETTINGS.trailColor,
+				},
+			},
+			{
+				name: "Trail edge thickness",
+				desc: "Thickness of trail edges, as a multiple of the native line thickness.",
+				control: {
+					type: "slider",
+					key: "trailLineWidth",
+					defaultValue: DEFAULT_SETTINGS.trailLineWidth,
+					min: 1,
+					max: 5,
+					step: 0.5,
+				},
+			},
+			{
+				name: "Trail direction arrows",
+				desc: "Show an arrow on each trail edge pointing in the order you locked the nodes.",
+				control: {
+					type: "toggle",
+					key: "showTrailArrows",
+					defaultValue: DEFAULT_SETTINGS.showTrailArrows,
+				},
+			},
+		];
+	}
+
+	getControlValue(key: string): unknown {
+		return this.plugin.settings[key as keyof GraphHighlightLockSettings];
+	}
+
+	async setControlValue(key: string, value: unknown): Promise<void> {
+		Object.assign(this.plugin.settings, { [key]: value });
+		await this.plugin.saveSettings();
+		if (key === "showLockMarker") this.plugin.refreshMarkers();
+	}
+
+	// Fallback for Obsidian versions older than 1.13.0. Not called on 1.13+,
+	// where the tab is rendered from getSettingDefinitions() instead.
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
@@ -91,7 +160,6 @@ export class GraphHighlightLockSettingTab extends PluginSettingTab {
 				slider
 					.setLimits(1, 5, 0.5)
 					.setValue(this.plugin.settings.trailLineWidth)
-					.setDynamicTooltip()
 					.onChange(async (value) => {
 						this.plugin.settings.trailLineWidth = value;
 						await this.plugin.saveSettings();

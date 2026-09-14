@@ -1,9 +1,9 @@
 {
   "id": "graph-highlight-lock",
   "name": "Graph Highlight Lock",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "minAppVersion": "1.8.0",
-  "description": "Lock and preserve node connection highlighting in Obsidian Graph View, with a visible navigation trail.",
+  "description": "Lock and preserve node connection highlighting in Graph View, with a visible navigation trail.",
   "author": "GOVERSE",
   "authorUrl": "https://www.youtube.com/@goverse82",
   "isDesktopOnly": true
