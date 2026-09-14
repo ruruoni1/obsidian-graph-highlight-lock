@@ -79,6 +79,15 @@ export interface GraphLink {
 	line?: PixiObject;
 	/** PIXI.Graphics for the directional arrow head, if arrows are enabled. */
 	arrow?: PixiObject;
+	/**
+	 * Recomputes this link's geometry/tint/alpha/arrow-visibility from
+	 * scratch every time it's called — several of those writes are direct
+	 * assignments (not lerped), so overriding `line.height`/`arrow.visible`
+	 * etc. directly only sticks if this never runs again afterward. The
+	 * reliable fix is overriding this method itself (per-instance) to call
+	 * the original then apply our own values, guaranteeing we're always last.
+	 */
+	render?: () => void;
 }
 
 /** The renderer attached to a Graph view leaf. Lives at `leaf.view.renderer`. */

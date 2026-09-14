@@ -158,5 +158,34 @@ export class GraphAdapter {
 		this.originalGetFillColor.delete(nodeId);
 	}
 
+	/**
+	 * Wraps `link.render` (per-instance, never the shared prototype) so `after`
+	 * always runs immediately following the native computation, guaranteeing
+	 * our values are the last word — several of the properties `render()`
+	 * touches (`line.height`, `arrow.visible`, `arrow.x/y/rotation`) are direct
+	 * assignments with no lerp, so overriding them from a separately-scheduled
+	 * loop only sticks if we happen to run after native's own call that frame;
+	 * wrapping the call chain itself removes that race entirely.
+	 */
+	overrideLinkRender(link: GraphLink, after: () => void): void {
+		if (typeof link.render !== "function") return;
+		if (!this.originalLinkRender.has(link)) {
+			this.originalLinkRender.set(link, link.render.bind(link));
+		}
+		const original = this.originalLinkRender.get(link)!;
+		link.render = () => {
+			original();
+			after();
+		};
+	}
+
+	/** Restores `link`'s original `render`, previously saved by `overrideLinkRender`. */
+	restoreLinkRender(link: GraphLink): void {
+		const original = this.originalLinkRender.get(link);
+		if (original) link.render = original;
+		this.originalLinkRender.delete(link);
+	}
+
 	private originalGetFillColor = new Map<string, () => { rgb: number; a: number }>();
+	private originalLinkRender = new WeakMap<GraphLink, () => void>();
 }

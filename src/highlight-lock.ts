@@ -1,29 +1,10 @@
 import { Keymap } from "obsidian";
 import { GraphAdapter } from "./graph-adapter";
 import type { GraphHighlightLockSettings } from "./settings";
-import type { GraphNode, GraphPointerEvent, GraphView } from "./types";
+import type { GraphLink, GraphNode, GraphPointerEvent, GraphView } from "./types";
 
 /** Default trail color, used if a settings value fails to parse. */
 const DEFAULT_TRAIL_TINT = 0x5c8ff5;
-
-/** A trail edge's PIXI objects, plus the (ordered) endpoints for arrow direction/placement. */
-interface TrailEdgeVisual {
-	line?: PixiEditable;
-	arrow?: PixiEditable;
-	fromId: string;
-	toId: string;
-}
-
-type PixiEditable = {
-	tint?: number;
-	alpha?: number;
-	visible?: boolean;
-	x?: number;
-	y?: number;
-	rotation?: number;
-	height?: number;
-	scale?: { x: number; y: number };
-};
 
 /**
  * Owns every interaction hook for ONE Graph View leaf: the Alt+Click patch,
@@ -43,23 +24,13 @@ type PixiEditable = {
  * - Alt+Click an unrelated node -> path resets to just that node
  * - Esc / empty-space Alt+Click / clearLock() -> path empties entirely
  *
- * Trail NODES are kept visible WITHOUT any per-frame loop: Obsidian's own
- * `node.render()` decides each node's opacity by lerping toward 1 when it is
- * genuinely `forward`/`reverse`-adjacent to the current highlight, and toward
- * a dim value otherwise — fighting that decision's OUTPUT every frame (an
- * earlier approach) always loses the race against that same `render()` call.
- * Instead this marks trail nodes as adjacent to the current lock (steering
- * the INPUT `GraphAdapter.markConnectedToCurrent`) and overrides each trail
- * node's own color function (`GraphAdapter.overrideFillColor`) so native code
- * converges on — and stays at — our values on its own. Both only need to be
- * applied once per path change, not every frame.
- *
- * Trail LINKS have no equivalent override point: `link.render()` decides
- * color/opacity purely from a strict identity check (is either endpoint
- * literally the current highlight node), which can't be steered for a link
- * between two non-current trail nodes. Those are kept blue with a small,
- * bounded per-frame loop (`startLinkTintLoop`) that only ever touches the
- * handful of link objects actually on the trail — never the full link list.
+ * Nothing here runs on a per-frame loop. Both trail nodes and trail links
+ * are styled by wrapping a native per-instance method (`getFillColor` for
+ * nodes, `render` for links) so our values are applied deterministically
+ * right after Obsidian's own computation, every time it runs — instead of
+ * racing a separately-scheduled interval against native code that may
+ * recompute (and for several properties, directly overwrite with no lerp)
+ * the same values on its own schedule.
  */
 export class HighlightLockBinding {
 	private adapter: GraphAdapter;
@@ -76,18 +47,8 @@ export class HighlightLockBinding {
 	private fakeConnections = new Map<string, string>();
 	// ids currently wearing our fill-color override, so we know what to restore.
 	private recoloredNodeIds = new Set<string>();
-
-	// Links have no per-object color/connectivity override point like nodes'
-	// getFillColor()/forward/reverse: their render() decides both tint and
-	// alpha purely from `link.source === currentHighlightNode ||
-	// link.target === currentHighlightNode` (a strict identity check), which
-	// we cannot spoof for two DIFFERENT trail nodes against one current lock.
-	// So trail-connecting links are kept blue (and, optionally, carry a
-	// direction arrow) with a small bounded loop that only touches these
-	// specific (few) objects — never the full link list — re-asserted every
-	// frame while at least one exists.
-	private trailEdges: TrailEdgeVisual[] = [];
-	private linkTintRafId: number | null = null;
+	// Links currently wearing our render() wrapper, so we know what to restore.
+	private wrappedLinks = new Set<GraphLink>();
 
 	// A few delayed repaint nudges after each path change, not a loop: the
 	// data (fadeAlpha/tint) keeps animating toward its new target in the
@@ -284,12 +245,19 @@ export class HighlightLockBinding {
 		return false;
 	}
 
-	// === Trail visuals — applied once per path change, no per-frame loop ===
+	/** Parses `settings.trailColor` ("#rrggbb") into a PIXI-style 0xRRGGBB number. */
+	private trailColorRgb(): number {
+		const parsed = parseInt(this.settings.trailColor.replace("#", ""), 16);
+		return Number.isFinite(parsed) ? parsed : DEFAULT_TRAIL_TINT;
+	}
+
+	// === Trail visuals — reconciled once per path change ===
 
 	/**
-	 * Reconciles the fake-adjacency marks and color overrides with the
-	 * current `path`. Only ever touches ids that were, are, or are about to
-	 * be on the trail — bounded by path length, never the full graph.
+	 * Reconciles the fake-adjacency marks, color overrides, and link-render
+	 * wrappers with the current `path`. Only ever touches ids/links that
+	 * were, are, or are about to be on the trail — bounded by path length,
+	 * never the full graph.
 	 */
 	private syncTrailVisuals(): void {
 		const currentId = this.getLockedNodeId();
@@ -327,93 +295,60 @@ export class HighlightLockBinding {
 			}
 		}
 
-		this.syncTrailLinkTints();
+		this.syncTrailLinkWrappers();
 	}
 
-	/** Parses `settings.trailColor` ("#rrggbb") into a PIXI-style 0xRRGGBB number. */
-	private trailColorRgb(): number {
-		const parsed = parseInt(this.settings.trailColor.replace("#", ""), 16);
-		return Number.isFinite(parsed) ? parsed : DEFAULT_TRAIL_TINT;
-	}
-
-	/** Recomputes which link objects need the bounded per-frame reassertion, and starts/stops that loop accordingly. */
-	private syncTrailLinkTints(): void {
-		const edges: TrailEdgeVisual[] = [];
+	/**
+	 * Reconciles which links have our `render()` wrapper applied, based on
+	 * which consecutive path pairs are directly connected.
+	 */
+	private syncTrailLinkWrappers(): void {
+		const desired = new Map<GraphLink, { fromId: string; toId: string }>();
 		for (let i = 0; i < this.path.length - 1; i++) {
-			edges.push(...this.findEdgesBetween(this.path[i], this.path[i + 1]));
-		}
-		this.trailEdges = edges;
-
-		if (edges.length > 0) {
-			this.startLinkTintLoop();
-		} else {
-			this.stopLinkTintLoop();
-		}
-	}
-
-	private findEdgesBetween(fromId: string, toId: string): TrailEdgeVisual[] {
-		const edges: TrailEdgeVisual[] = [];
-		for (const link of this.adapter.getLinks()) {
-			const s = this.endpointId(link.source);
-			const t = this.endpointId(link.target);
-			if ((s === fromId && t === toId) || (s === toId && t === fromId)) {
-				edges.push({ line: link.line, arrow: link.arrow, fromId, toId });
+			const fromId = this.path[i];
+			const toId = this.path[i + 1];
+			for (const link of this.adapter.getLinks()) {
+				const s = this.endpointId(link.source);
+				const t = this.endpointId(link.target);
+				if ((s === fromId && t === toId) || (s === toId && t === fromId)) {
+					desired.set(link, { fromId, toId });
+				}
 			}
 		}
-		return edges;
+
+		for (const link of [...this.wrappedLinks]) {
+			if (!desired.has(link)) {
+				this.adapter.restoreLinkRender(link);
+				this.wrappedLinks.delete(link);
+			}
+		}
+
+		for (const [link, { fromId, toId }] of desired) {
+			if (this.wrappedLinks.has(link)) continue;
+			this.adapter.overrideLinkRender(link, () => this.styleTrailEdge(link, fromId, toId));
+			this.wrappedLinks.add(link);
+		}
 	}
 
 	/**
-	 * Every frame, forces the trail edges' color/thickness (and, if enabled,
-	 * a direction arrow) back to our values, then nudges a repaint so it's
-	 * actually painted. Stops itself once `trailEdges` is empty. Bounded to
-	 * the (small) set of edges actually on the trail — never the full link
-	 * list, regardless of vault size.
+	 * Runs right after the link's own native `render()` on every call it
+	 * makes (native's own schedule, not ours) — guaranteed to be the last
+	 * write that frame, so overriding direct (non-lerped) assignments like
+	 * `line.height` or `arrow.visible` actually sticks.
 	 */
-	private startLinkTintLoop(): void {
-		if (this.linkTintRafId !== null) return;
-		const loop = () => {
-			if (this.linkTintRafId === null) return;
-			const color = this.trailColorRgb();
-			for (const edge of this.trailEdges) {
-				this.applyEdgeLine(edge, color);
-				if (this.settings.showTrailArrows) this.applyEdgeArrow(edge, color);
-			}
-			this.adapter.requestRepaint();
-			this.linkTintRafId = requestAnimationFrame(loop);
-		};
-		this.linkTintRafId = requestAnimationFrame(loop);
-	}
-
-	private stopLinkTintLoop(): void {
-		if (this.linkTintRafId !== null) {
-			cancelAnimationFrame(this.linkTintRafId);
-			this.linkTintRafId = null;
+	private styleTrailEdge(link: GraphLink, fromId: string, toId: string): void {
+		const color = this.trailColorRgb();
+		const line = link.line;
+		if (line) {
+			if (typeof line.tint === "number") line.tint = color;
+			if (typeof line.alpha === "number") line.alpha = 1;
+			if (typeof line.height === "number") line.height *= this.settings.trailLineWidth;
 		}
-	}
 
-	private applyEdgeLine(edge: TrailEdgeVisual, color: number): void {
-		const line = edge.line;
-		if (!line) return;
-		if (typeof line.tint === "number") line.tint = color;
-		if (typeof line.alpha === "number") line.alpha = 1;
-		// Native sets `height` (the line's thickness) fresh every frame before
-		// this loop runs, so scaling it here each frame (rather than caching a
-		// factor) never compounds.
-		if (typeof line.height === "number") line.height *= this.settings.trailLineWidth;
-	}
-
-	/**
-	 * Repositions/re-rotates the link's own (normally hidden unless Obsidian's
-	 * global "Show arrows" setting is on) arrowhead to point from the OLDER to
-	 * the NEWER node in click order — not necessarily the note's real link
-	 * direction, which is what native code would otherwise show it as.
-	 */
-	private applyEdgeArrow(edge: TrailEdgeVisual, color: number): void {
-		const arrow = edge.arrow;
-		if (!arrow) return;
-		const from = this.adapter.getNode(edge.fromId);
-		const to = this.adapter.getNode(edge.toId);
+		const arrow = link.arrow;
+		if (!this.settings.showTrailArrows || !arrow) return;
+		const from = this.adapter.getNode(fromId);
+		const to = this.adapter.getNode(toId);
 		if (
 			!from ||
 			!to ||
@@ -424,6 +359,9 @@ export class HighlightLockBinding {
 		) {
 			return;
 		}
+		// Points from the OLDER to the NEWER node in click order — not
+		// necessarily the note's real link direction, since the whole point
+		// of the trail is to show the path the user navigated.
 		arrow.visible = true;
 		if (typeof arrow.tint === "number") arrow.tint = color;
 		if (typeof arrow.alpha === "number") arrow.alpha = 1;
@@ -449,7 +387,9 @@ export class HighlightLockBinding {
 		}
 		this.recoloredNodeIds.clear();
 
-		this.trailEdges = [];
-		this.stopLinkTintLoop();
+		for (const link of this.wrappedLinks) {
+			this.adapter.restoreLinkRender(link);
+		}
+		this.wrappedLinks.clear();
 	}
 }
