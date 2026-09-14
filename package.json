@@ -12,7 +12,11 @@
     "obsidian-plugin",
     "graph-view"
   ],
-  "author": "GOVERSE",
+  "author": {
+    "name": "GOVERSE",
+    "email": "ruruoni1@gmail.com",
+    "url": "https://www.youtube.com/@goverse82"
+  },
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^20.0.0",

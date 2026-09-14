@@ -5,5 +5,6 @@
   "minAppVersion": "1.8.0",
   "description": "Lock and preserve node connection highlighting in Obsidian Graph View, with a visible navigation trail.",
   "author": "GOVERSE",
+  "authorUrl": "https://www.youtube.com/@goverse82",
   "isDesktopOnly": true
 }

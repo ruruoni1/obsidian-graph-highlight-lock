@@ -116,6 +116,15 @@ npm run build   # 프로덕션 빌드 (main.js 생성)
 - 연결 깊이(Depth) 1~3단계 선택
 - Lock 상태 저장 (세션 간 유지)
 
+## 제작자
+
+**GOVERSE**
+
+- 📺 YouTube: [@goverse82](https://www.youtube.com/@goverse82)
+- ✉️ Email: [ruruoni1@gmail.com](mailto:ruruoni1@gmail.com)
+
+버그 제보나 기능 제안은 [Issues](../../issues)로 남겨주세요.
+
 ## 라이선스
 
 MIT
@@ -198,6 +207,15 @@ Copy the built `main.js`, `manifest.json`, and `styles.css` into your test vault
 - Multiple simultaneous locks / trails
 - Selectable connection depth (1–3 hops)
 - Persisting lock state across sessions
+
+## Author
+
+**GOVERSE**
+
+- 📺 YouTube: [@goverse82](https://www.youtube.com/@goverse82)
+- ✉️ Email: [ruruoni1@gmail.com](mailto:ruruoni1@gmail.com)
+
+Bug reports and feature requests are welcome in [Issues](../../issues).
 
 ## License
 
