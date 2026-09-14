@@ -11,6 +11,8 @@ export interface PixiObject {
 	off(event: string, fn: (...args: unknown[]) => void): void;
 	/** Color multiplier PIXI applies on top of the object's own draw color. */
 	tint?: number;
+	/** Opacity (0-1). */
+	alpha?: number;
 }
 
 /**

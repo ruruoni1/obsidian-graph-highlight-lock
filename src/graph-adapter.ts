@@ -142,7 +142,6 @@ export class GraphAdapter {
 	 */
 	overrideFillColor(nodeId: string, rgb: number): void {
 		const node = this.getNode(nodeId);
-		console.debug("[GHL] overrideFillColor called", { nodeId, rgb, nodeFound: !!node });
 		if (!node || typeof node.getFillColor !== "function") return;
 		if (!this.originalGetFillColor.has(nodeId)) {
 			this.originalGetFillColor.set(nodeId, node.getFillColor.bind(node));
@@ -153,7 +152,6 @@ export class GraphAdapter {
 
 	/** Restores `nodeId`'s original `getFillColor`, previously saved by `overrideFillColor`. */
 	restoreFillColor(nodeId: string): void {
-		console.debug("[GHL] restoreFillColor called", { nodeId, hadOriginal: this.originalGetFillColor.has(nodeId) });
 		const node = this.getNode(nodeId);
 		const original = this.originalGetFillColor.get(nodeId);
 		if (node && original) node.getFillColor = original;

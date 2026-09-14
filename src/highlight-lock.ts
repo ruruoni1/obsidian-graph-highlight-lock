@@ -28,7 +28,7 @@ const TRAIL_TINT = 0x5c8ff5;
  * - Alt+Click an unrelated node -> path resets to just that node
  * - Esc / empty-space Alt+Click / clearLock() -> path empties entirely
  *
- * Trail nodes are kept visible WITHOUT any per-frame loop: Obsidian's own
+ * Trail NODES are kept visible WITHOUT any per-frame loop: Obsidian's own
  * `node.render()` decides each node's opacity by lerping toward 1 when it is
  * genuinely `forward`/`reverse`-adjacent to the current highlight, and toward
  * a dim value otherwise — fighting that decision's OUTPUT every frame (an
@@ -38,6 +38,13 @@ const TRAIL_TINT = 0x5c8ff5;
  * node's own color function (`GraphAdapter.overrideFillColor`) so native code
  * converges on — and stays at — our values on its own. Both only need to be
  * applied once per path change, not every frame.
+ *
+ * Trail LINKS have no equivalent override point: `link.render()` decides
+ * color/opacity purely from a strict identity check (is either endpoint
+ * literally the current highlight node), which can't be steered for a link
+ * between two non-current trail nodes. Those are kept blue with a small,
+ * bounded per-frame loop (`startLinkTintLoop`) that only ever touches the
+ * handful of link objects actually on the trail — never the full link list.
  */
 export class HighlightLockBinding {
 	private adapter: GraphAdapter;
@@ -54,9 +61,17 @@ export class HighlightLockBinding {
 	private fakeConnections = new Map<string, string>();
 	// ids currently wearing our fill-color override, so we know what to restore.
 	private recoloredNodeIds = new Set<string>();
-	// Original tint of link line/arrow objects we've touched, for restore.
-	private originalLinkTint = new WeakMap<object, number>();
-	private tintedLinkObjects = new Set<object>();
+
+	// Links have no per-object color/connectivity override point like nodes'
+	// getFillColor()/forward/reverse: their render() decides both tint and
+	// alpha purely from `link.source === currentHighlightNode ||
+	// link.target === currentHighlightNode` (a strict identity check), which
+	// we cannot spoof for two DIFFERENT trail nodes against one current lock.
+	// So trail-connecting links are kept blue with a small bounded loop that
+	// only touches these specific (few) objects — never the full link list —
+	// re-asserted every frame while at least one exists.
+	private trailLinkObjects: { tint?: number; alpha?: number }[] = [];
+	private linkTintRafId: number | null = null;
 
 	// A few delayed repaint nudges after each path change, not a loop: the
 	// data (fadeAlpha/tint) keeps animating toward its new target in the
@@ -263,13 +278,6 @@ export class HighlightLockBinding {
 	private syncTrailVisuals(): void {
 		const currentId = this.getLockedNodeId();
 		const desiredTrailIds = new Set(this.path.slice(0, -1));
-		console.debug("[GHL] syncTrailVisuals", {
-			path: [...this.path],
-			currentId,
-			desiredTrailIds: [...desiredTrailIds],
-			existingFakeConnections: [...this.fakeConnections],
-			existingRecolored: [...this.recoloredNodeIds],
-		});
 
 		// Drop fake connections that no longer apply (node left the trail, or
 		// the current lock moved on to a different node).
@@ -306,22 +314,23 @@ export class HighlightLockBinding {
 		this.syncTrailLinkTints();
 	}
 
-	/** Tints the edges directly connecting consecutive trail nodes; restores every other previously-tinted edge. */
+	/** Recomputes which link objects need the bounded per-frame reassertion, and starts/stops that loop accordingly. */
 	private syncTrailLinkTints(): void {
-		const desired = new Set<object>();
+		const objs: { tint?: number; alpha?: number }[] = [];
 		for (let i = 0; i < this.path.length - 1; i++) {
-			for (const obj of this.findLinkObjectsBetween(this.path[i], this.path[i + 1])) {
-				this.tintLink(obj);
-				desired.add(obj);
-			}
+			objs.push(...this.findLinkObjectsBetween(this.path[i], this.path[i + 1]));
 		}
-		for (const obj of [...this.tintedLinkObjects]) {
-			if (!desired.has(obj)) this.restoreLinkTint(obj);
+		this.trailLinkObjects = objs;
+
+		if (objs.length > 0) {
+			this.startLinkTintLoop();
+		} else {
+			this.stopLinkTintLoop();
 		}
 	}
 
-	private findLinkObjectsBetween(a: string, b: string): { tint?: number }[] {
-		const objs: { tint?: number }[] = [];
+	private findLinkObjectsBetween(a: string, b: string): { tint?: number; alpha?: number }[] {
+		const objs: { tint?: number; alpha?: number }[] = [];
 		for (const link of this.adapter.getLinks()) {
 			const s = this.endpointId(link.source);
 			const t = this.endpointId(link.target);
@@ -333,17 +342,31 @@ export class HighlightLockBinding {
 		return objs;
 	}
 
-	private tintLink(obj: { tint?: number }): void {
-		if (typeof obj.tint !== "number") return;
-		if (!this.originalLinkTint.has(obj)) this.originalLinkTint.set(obj, obj.tint);
-		obj.tint = TRAIL_TINT;
-		this.tintedLinkObjects.add(obj);
+	/**
+	 * Every frame, forces tint + alpha back to our trail color on the small,
+	 * bounded set of link objects currently on the trail (never the full link
+	 * list), and nudges a repaint so it's actually painted. Stops itself once
+	 * `trailLinkObjects` is empty.
+	 */
+	private startLinkTintLoop(): void {
+		if (this.linkTintRafId !== null) return;
+		const loop = () => {
+			if (this.linkTintRafId === null) return;
+			for (const obj of this.trailLinkObjects) {
+				if (typeof obj.tint === "number") obj.tint = TRAIL_TINT;
+				if (typeof obj.alpha === "number") obj.alpha = 1;
+			}
+			this.adapter.requestRepaint();
+			this.linkTintRafId = requestAnimationFrame(loop);
+		};
+		this.linkTintRafId = requestAnimationFrame(loop);
 	}
 
-	private restoreLinkTint(obj: { tint?: number }): void {
-		const original = this.originalLinkTint.get(obj);
-		if (original !== undefined) obj.tint = original;
-		this.tintedLinkObjects.delete(obj);
+	private stopLinkTintLoop(): void {
+		if (this.linkTintRafId !== null) {
+			cancelAnimationFrame(this.linkTintRafId);
+			this.linkTintRafId = null;
+		}
 	}
 
 	/** Undoes every trail override this instance holds (called on clear/detach). */
@@ -358,8 +381,7 @@ export class HighlightLockBinding {
 		}
 		this.recoloredNodeIds.clear();
 
-		for (const obj of this.tintedLinkObjects) {
-			this.restoreLinkTint(obj);
-		}
+		this.trailLinkObjects = [];
+		this.stopLinkTintLoop();
 	}
 }

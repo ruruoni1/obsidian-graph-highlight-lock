@@ -127,17 +127,11 @@ export default class GraphHighlightLockPlugin extends Plugin {
 			}
 		}
 
-		console.debug("[GHL] reconcile", {
-			openLeafCount: openLeaves.size,
-			boundLeafCount: this.bindings.size,
-		});
-
 		for (const leaf of openLeaves) {
 			if (this.bindings.has(leaf)) continue;
 			const view = leaf.view as unknown as GraphView;
 			if (!GraphAdapter.isReady(view)) continue;
 
-			console.debug("[GHL] creating new binding for leaf");
 			const markerEl = this.createMarkerEl(leaf);
 			const binding = new HighlightLockBinding(
 				view,
