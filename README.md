@@ -10,6 +10,8 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![No new dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen)](package.json)
 
+![Graph Highlight Lock demo — locking a node and extending the trail across a real vault](docs/demo.gif)
+
 </div>
 
 ---
